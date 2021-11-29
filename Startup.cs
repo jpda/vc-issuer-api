@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using Microsoft.Azure.Functions.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -38,6 +39,7 @@ namespace IssuerApi
                 .Configure<IConfiguration>((options, configuration) =>
                 {
                     configuration.GetSection("VC").Bind(options);
+                    options.ValidCredentialTypes = options.ValidCredentialTypeSetting.Split(',');
                 });
         }
     }
@@ -62,8 +64,10 @@ namespace IssuerApi
         public string CallbackUrl { get => $"{HostName}/{CallbackPath}"; }
         public string CallbackPath { get; set; }
         public string HostName { get; set; }
-        public string CredentialType { get; set; }
+        public string CredentialTypeBase { get; set; }
         public string ClientName { get; set; }
+        public string ValidCredentialTypeSetting { get; set; }
+        public string[] ValidCredentialTypes { get; set; }
     }
 
     public class MsalTokenProvider

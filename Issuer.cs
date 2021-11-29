@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json.Serialization;
 
@@ -30,17 +31,24 @@ namespace IssuerApi
         }
 
         [FunctionName("issuer")]
-        public async Task<IActionResult> IssuerRequest([HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = "issuer/request")] HttpRequest req)
+        public async Task<IActionResult> IssuerRequest([HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = "issuer/request/{credType}")] HttpRequest req, string credType)
         {
+            _logger.LogInformation($"Issuer Request for credtype {credType}");
+
             //"VC:Endpoint": "https://beta.did.msidentity.com/v1.0/{0}/verifiablecredentials/request",
             _logger.LogInformation("Starting new issue request");
             var t = await _msal.AcquireTokenForClient(new[] { _vcServiceConfig.ServiceScope }).ExecuteAsync();
             _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", t.AccessToken);
 
+            if (credType == null || string.IsNullOrEmpty(credType) || !_vcServiceConfig.ValidCredentialTypes.Contains(credType))
+            {
+                credType = "testcred"; // default, could be setting
+            }
+
             var requestId = Guid.NewGuid().ToString();
 
             _logger.LogInformation($"Generating request ID {requestId}");
-            var request = GenerateVcRequest(requestId, _vcServiceConfig);
+            var request = GenerateVcRequest(requestId, credType, _vcServiceConfig);
 
             var reqPayload = System.Text.Json.JsonSerializer.Serialize(request, new System.Text.Json.JsonSerializerOptions()
             {
@@ -48,7 +56,7 @@ namespace IssuerApi
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             });
 
-            _logger.LogInformation($"Sending {reqPayload} to VC service {_vcServiceConfig.Endpoint}");
+            _logger.LogInformation($"Sending {reqPayload} to VC service {_vcServiceConfig.Endpoint}"); 
 
             //var serviceRequest = await _httpClient.PostAsJsonAsync<VcRequest>("verifiablecredentials/request", request);
             var a = new StringContent(reqPayload, System.Text.Encoding.UTF8, "application/json");
@@ -62,12 +70,12 @@ namespace IssuerApi
             return new OkObjectResult(res);
         }
 
-        private static VcRequest GenerateVcRequest(string reqId, VerifiableCredentialServiceConfiguration config)
+        private static VcRequest GenerateVcRequest(string reqId, string credType, VerifiableCredentialServiceConfiguration config)
         {
             var a = new VcRequest()
             {
                 Id = reqId,
-                Callback = new Callback() 
+                Callback = new Callback()
                 {
                     Url = config.CallbackUrl,
                     State = reqId,
@@ -80,7 +88,7 @@ namespace IssuerApi
                 },
                 Issuance = new Issuance()
                 {
-                    Type = config.CredentialType,
+                    Type = $"{config.CredentialTypeBase}/{credType}",
                     Manifest = config.CredentialManifest,
                     // Pin = new Pin()
                     // {
@@ -92,26 +100,4 @@ namespace IssuerApi
             return a;
         }
     }
-
-    // public static class IssuerFunctions
-    // {
-    //     public static async Task<IActionResult> Run(
-    //         [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
-    //         ILogger log)
-    //     {
-    //         log.LogInformation("C# HTTP trigger function processed a request.");
-
-    //         string name = req.Query["name"];
-
-    //         string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-    //         dynamic data = JsonConvert.DeserializeObject(requestBody);
-    //         name = name ?? data?.name;
-
-    //         string responseMessage = string.IsNullOrEmpty(name)
-    //             ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-    //             : $"Hello, {name}. This HTTP triggered function executed successfully.";
-
-    //         return new OkObjectResult(responseMessage);
-    //     }
-    // }
 }
